@@ -3,7 +3,7 @@ import cors from 'cors'
 import jwt from 'jsonwebtoken'
 import * as dotenv from 'dotenv'
 dotenv.config()
-import { MongoClient, ServerApiVersion } from 'mongodb'
+import { MongoClient, ObjectId, ServerApiVersion } from 'mongodb'
 
 const app = express()
 const port = process.env.PORT || 5000
@@ -212,6 +212,74 @@ app.post('/api/v1/doctors-portal/users', async (req, res) => {
             success: true,
             message: 'Successfully create a new users',
             data: users
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
+//  Display All User Data Load
+app.get('/api/v1/doctors-portal/users', async (req, res) => {
+    try {
+        const users = await Users.find({}).toArray()
+        res.send({
+            success: true,
+            message: 'Successfully get the all Users',
+            data: users
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
+// Check Admin
+app.get('/api/v1/doctors-portal/users/admin/:email', async (req, res) => {
+    try {
+        const userEmail = req.params.email
+        const user = await Users.findOne({ email: userEmail })
+        res.send({
+            success: true,
+            message: 'Successfully get the all Users',
+            isAdmin: user?.role === 'Admin'
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
+// User Role update API
+app.put('/api/v1/doctors-portal/users/admin/:userId', verifyJWT, async (req, res) => {
+    try {
+        const decodedEmail = req.decoded.email
+        const userRole = await Users.findOne({ email: decodedEmail })
+        if(userRole?.role !== 'Admin') {
+            return res.status(403).send({
+                message: 'Forbidden Access!'
+            })
+        }
+
+        const userId = req.params.userId
+        const userFilter = { _id: ObjectId(userId) }
+        const options = { upsert: true }
+        const updatedDoc = {
+            $set: {
+                role: 'Admin'
+            }
+        }
+        const user = await Users.updateOne(userFilter, updatedDoc, options)
+        res.send({
+            success: true,
+            message: 'Successfully change the user role',
+            data: user
         })
     } catch (error) {
         res.send({
