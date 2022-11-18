@@ -38,7 +38,7 @@ function verifyJWT(req, res, next) {
     })
 }
 
-
+// Database Connect function
 async function dbConnect() {
     try {
         await client.connect()
@@ -52,6 +52,7 @@ async function dbConnect() {
 const AppointmentOption = client.db('doctors_portal').collection('appointmentOption')
 const Bookings = client.db('doctors_portal').collection('bookings')
 const Users = client.db('doctors_portal').collection('users')
+const Doctors = client.db('doctors_portal').collection('doctors')
 
 // All API Endpoint
 app.get('/api/v1/doctors-portal/appointmentOptions', async (req, res) => {
@@ -130,6 +131,24 @@ app.get('/api/v2/doctors-portal/appointmentOptions', async (req, res) => {
             success: true,
             message: 'Successfully got the all Appointment Options data',
             data: appointmentOptions
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
+// Just Get the Treatment name form the AppointmentOption collection API
+app.get('/api/v1/doctors-portal/appointmentSpecialty', async (req, res) => {
+    try {
+        const query = {}
+        const aSpecialtyData = await AppointmentOption.find(query).project({ name: 1 }).toArray()
+        res.send({
+            success: true,
+            message: 'Successfully got the all Appointment Specialty data',
+            data: aSpecialtyData
         })
     } catch (error) {
         res.send({
@@ -289,7 +308,39 @@ app.put('/api/v1/doctors-portal/users/admin/:userId', verifyJWT, async (req, res
     }
 })
 
+// Doctors All API Here
+app.post('/api/v1/doctors-portal/doctors', verifyJWT, async (req, res) => {
+    try {
+        const doctorData = req.body
+        const doctors = await Doctors.insertOne(doctorData)
+        res.send({
+            success: true,
+            message: 'Successfully Add a New Doctor',
+            data: doctors
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
 
+app.get('/api/v1/doctors-portal/doctors', async (req, res) => {
+    try {
+        const doctors = await Doctors.find({}).toArray()
+        res.send({
+            success: true,
+            message: 'Successfully get the all Doctors data',
+            data: doctors
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
 
 app.listen(port, () => {
     console.log(`Doctors Portal Server Running on Port ${port}`)
