@@ -54,6 +54,19 @@ const Bookings = client.db('doctors_portal').collection('bookings')
 const Users = client.db('doctors_portal').collection('users')
 const Doctors = client.db('doctors_portal').collection('doctors')
 
+// Note: Make sure you use verifyAdmin after verifyJWt token
+// Admin Middleware
+const verifyAdmin = async (req, res, next) => {
+    const decodedEmail = req.decoded.email
+    const userRole = await Users.findOne({ email: decodedEmail })
+    if(userRole?.role !== 'Admin') {
+        return res.status(403).send({
+            message: 'Forbidden Access!'
+        })
+    }
+    next()
+}
+
 // All API Endpoint
 app.get('/api/v1/doctors-portal/appointmentOptions', async (req, res) => {
     try {
@@ -276,16 +289,8 @@ app.get('/api/v1/doctors-portal/users/admin/:email', async (req, res) => {
 })
 
 // User Role update API
-app.put('/api/v1/doctors-portal/users/admin/:userId', verifyJWT, async (req, res) => {
+app.put('/api/v1/doctors-portal/users/admin/:userId', verifyJWT, verifyAdmin, async (req, res) => {
     try {
-        const decodedEmail = req.decoded.email
-        const userRole = await Users.findOne({ email: decodedEmail })
-        if(userRole?.role !== 'Admin') {
-            return res.status(403).send({
-                message: 'Forbidden Access!'
-            })
-        }
-
         const userId = req.params.userId
         const userFilter = { _id: ObjectId(userId) }
         const options = { upsert: true }
@@ -309,7 +314,7 @@ app.put('/api/v1/doctors-portal/users/admin/:userId', verifyJWT, async (req, res
 })
 
 // Doctors All API Here
-app.post('/api/v1/doctors-portal/doctors', verifyJWT, async (req, res) => {
+app.post('/api/v1/doctors-portal/doctors', verifyJWT, verifyAdmin, async (req, res) => {
     try {
         const doctorData = req.body
         const doctors = await Doctors.insertOne(doctorData)
@@ -332,6 +337,23 @@ app.get('/api/v1/doctors-portal/doctors', async (req, res) => {
         res.send({
             success: true,
             message: 'Successfully get the all Doctors data',
+            data: doctors
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
+app.delete('/api/v1/doctors-portal/doctors/:doctorId', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const doctorId = req.params.doctorId
+        const doctors = await Doctors.deleteOne({ _id: ObjectId(doctorId) })
+        res.send({
+            success: true,
+            message: 'Doctor deleted successfully',
             data: doctors
         })
     } catch (error) {
