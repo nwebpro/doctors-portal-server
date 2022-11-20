@@ -3,6 +3,9 @@ import cors from 'cors'
 import jwt from 'jsonwebtoken'
 import * as dotenv from 'dotenv'
 dotenv.config()
+import Stripe from "stripe"
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY)
+// const stripe = require("stripe")(process.env.STRIPE_SECRET_KEY)
 import { MongoClient, ObjectId, ServerApiVersion } from 'mongodb'
 
 const app = express()
@@ -53,6 +56,7 @@ const AppointmentOption = client.db('doctors_portal').collection('appointmentOpt
 const Bookings = client.db('doctors_portal').collection('bookings')
 const Users = client.db('doctors_portal').collection('users')
 const Doctors = client.db('doctors_portal').collection('doctors')
+const Payments = client.db('doctors_portal').collection('payments')
 
 // Note: Make sure you use verifyAdmin after verifyJWt token
 // Admin Middleware
@@ -122,6 +126,7 @@ app.get('/api/v2/doctors-portal/appointmentOptions', async (req, res) => {
                 $project: {
                     name: 1,
                     slots: 1,
+                    price: 1,
                     booked: {
                         $map: {
                             input: '$booked',
@@ -136,7 +141,8 @@ app.get('/api/v2/doctors-portal/appointmentOptions', async (req, res) => {
                     name: 1,
                     slots: {
                         $setDifference: ['$slots', '$booked']
-                    }
+                    },
+                    price: 1
                 }
             }
         ]).toArray()
@@ -170,6 +176,29 @@ app.get('/api/v1/doctors-portal/appointmentSpecialty', async (req, res) => {
         })
     }
 })
+
+// temporary to update price filed on appointment option
+// app.get('/api/v1/doctors-portal/addPrice' , async (req, res) => {
+//     try {
+//         const options = { upsert: true }
+//         const updatedDoc = {
+//             $set: {
+//                 price: 99
+//             }
+//         }
+//         const updatePrice = await AppointmentOption.updateMany({}, updatedDoc, options)
+//         res.send({
+//             success: true,
+//             message: 'Successfully update price',
+//             data: updatePrice
+//         })
+//     } catch (error) {
+//         res.send({
+//             success: false,
+//             error: error.message
+//         })
+//     }
+// })
 
 // Bookings Create API
 app.post('/api/v1/doctors-portal/bookings', async (req, res) => {
@@ -215,6 +244,75 @@ app.get('/api/v1/doctors-portal/bookings', verifyJWT, async (req, res) => {
             success: true,
             message: 'Successfully get the all booking data',
             data: bookings
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
+app.get('/api/v1/doctors-portal/bookings/:bookingId', async (req, res) => {
+    try {
+        const bookingId = req.params.bookingId
+        const singleBooking = await Bookings.findOne({ _id: ObjectId(bookingId) })
+        res.send({
+            success: true,
+            message: 'Successfully Get the single booking data',
+            data: singleBooking
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
+// Stripe Payment method api
+app.post('/api/v1/doctors-portal/create-payment-intent', verifyJWT, async (req, res) => {
+    try {
+        const booking = req.body
+        const price = booking.price
+        const amount = price * 100
+        const paymentIntent = await stripe.paymentIntents.create({
+            currency: 'usd',
+            amount: amount,
+            "payment_method_types": [
+                "card"
+            ]
+        })
+        res.send({
+            success: true,
+            message: 'Successfully stripe payment created',
+            clientSecret: paymentIntent.client_secret
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
+app.post('/api/v1/doctors-portal/payments', verifyJWT, async (req, res) => {
+    try {
+        const paymentData = req.body
+        const payments = await Payments.insertOne(paymentData)
+        const id = paymentData.bookingId
+        const filter = { _id: ObjectId(id) }
+        const updatedDoc = {
+            $set: {
+                paid: true,
+                transactionId: paymentData.transactionId
+            }
+        }
+        const updatePayments = await Bookings.updateOne(filter, updatedDoc)
+        res.send({
+            success: true,
+            message: 'Successfully Add a Payment',
+            data: payments
         })
     } catch (error) {
         res.send({
@@ -288,6 +386,24 @@ app.get('/api/v1/doctors-portal/users/admin/:email', async (req, res) => {
     }
 })
 
+// User Delete
+app.delete('/api/v1/doctors-portal/users/:userId', verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const userId = req.params.userId
+        const users = await Users.deleteOne({ _id: ObjectId(userId) })
+        res.send({
+            success: true,
+            message: 'User deleted successfully',
+            data: users
+        })
+    } catch (error) {
+        res.send({
+            success: false,
+            error: error.message
+        })
+    }
+})
+
 // User Role update API
 app.put('/api/v1/doctors-portal/users/admin/:userId', verifyJWT, verifyAdmin, async (req, res) => {
     try {
@@ -331,7 +447,7 @@ app.post('/api/v1/doctors-portal/doctors', verifyJWT, verifyAdmin, async (req, r
     }
 })
 
-app.get('/api/v1/doctors-portal/doctors', async (req, res) => {
+app.get('/api/v1/doctors-portal/doctors', verifyJWT, verifyAdmin, async (req, res) => {
     try {
         const doctors = await Doctors.find({}).toArray()
         res.send({
